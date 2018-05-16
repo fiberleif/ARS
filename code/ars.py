@@ -346,9 +346,15 @@ class ARSLearner(object):
             reward_directions.append(params)
 
         num_params_gradient = reward_sample_num / batch_size
+        gradient_list = []
         for i in range(num_params_gradient):
-            params_gradient = self.reward_func.sess.run(self.reward_func.input_gradient_op, feed_dict={input_ph: reward_directions[i*batch_size:(i+1)*batch_size]})
+            params_gradient, _ = self.reward_func.sess.run(self.reward_func.input_gradient_op, feed_dict={input_ph: reward_directions[i*batch_size:(i+1)*batch_size]})
+            params_gradient_mean = np.mean(params_gradient, axis=0)
+            gradient_list.append(params_gradient)
+        gradient_list = np.asarray(gradient_list)
+        gradient_mean = np.mean(gradient_list, axis=0)
 
+        self.w_policy -= self.optimizer._compute_step(gradient_mean).reshape(self.w_policy.shape)
         return
 
     def train(self, num_iter):

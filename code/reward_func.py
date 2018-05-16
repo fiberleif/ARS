@@ -70,6 +70,7 @@ class RewardFunction(object):
         self.rewards = tf.layers.dense(out, 1,
                                      kernel_initializer=tf.random_normal_initializer(
                                          stddev=np.sqrt(1 / self.hidden_dim)), name="rewards")
+        self.rewards_sum = tf.reduce_sum(self.rewards)
         # logvar_speed is used to 'fool' gradient descent into making faster updates
         # to log-variances. heuristic sets logvar_speed based on network size.
         # logvar_speed = (10 * hid3_size) // 48
@@ -109,6 +110,8 @@ class RewardFunction(object):
         self.loss = tf.reduce_mean(tf.pow(self.rewards - self.reward_ph, 2))
         optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.minimize(self.loss)
+        optimizer_input = tf.train.GradientDescentOptimizer(self.lr)
+        self.input_gradient_op = optimizer_input.compute_gradients(self.rewards_sum, var_list=[input_ph])
 
     def _init_session(self):
         """Launch TensorFlow session and initialize variables"""
