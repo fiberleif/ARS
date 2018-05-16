@@ -14,6 +14,7 @@ import logz
 import ray
 import utils
 import optimizers
+from reward_func import *
 from policies import *
 import socket
 from shared_noise import *
@@ -174,9 +175,6 @@ class ARSLearner(object):
         self.shift = shift
         self.params = params
 
-        # params->return tuple dataset
-        self.dataset = []
-
         # exp statistics
         self.max_past_avg_reward = float('-inf')
         self.num_episodes_used = float('inf')
@@ -211,6 +209,11 @@ class ARSLearner(object):
         # initialize optimization algorithm
         self.optimizer = optimizers.SGD(self.w_policy, self.step_size)        
         print("Initialization of ARS complete.")
+
+        # params->return tuple dataset
+        self.dataset = []
+        self.reward_func = RewardFunction(params_dim= self.w_policy.size, hidden_dim= 50, batch_size= 32, lr= 1e-3, seed= self.seed)
+
 
     def aggregate_rollouts(self, num_rollouts = None, evaluate = False):
         """ 
@@ -269,10 +272,20 @@ class ARSLearner(object):
         if evaluate:
             return rollout_rewards
 
+
         # append data into dataset
-        for row in deltas_idx.shape[0]:
-            for col in deltas_idx.shape[]
-            self.deltas.get(idx, self.w_policy.size)
+        for i in range(deltas_idx.size):
+            delta = self.deltas.get(deltas_idx[i], self.w_policy.size)
+            delta = (self.delta_std * delta).reshape(w_policy.shape)
+
+            params_pos = (self.w_policy + delta).flatten()
+            params_neg = (self.w_policy - delta).flatten()
+
+            reward_pos = rollout_rewards[i, 0]
+            reward_neg = rollout_rewards[i, 1]
+            self.dataset.append((params_pos, reward_pos))
+            self.dataset.append((params_neg, reward_neg))
+
 
         # select top performing directions if deltas_used < num_deltas
         max_rewards = np.max(rollout_rewards, axis = 1)
@@ -307,6 +320,35 @@ class ARSLearner(object):
         g_hat = self.aggregate_rollouts()                    
         print("Euclidean norm of update step:", np.linalg.norm(g_hat))
         self.w_policy -= self.optimizer._compute_step(g_hat).reshape(self.w_policy.shape)
+
+        # new gradient by reward function
+        train_size = len(self.dataset)
+        # shuffle_indices = np.random.permutation(np.arange(train_size))
+        # X_train_shuffle = [ data[0] for data in self.dataset]
+        # Y_train_shuffle = [ data[1] for data in self.dataset]
+
+        reward_train_epochs = 100
+        start = 0
+        batch_size = 32
+        for i in range(reward_train_epochs)：
+            if(start + batch_size + 1) <= train_size:
+                self.reward_func.sess.run(self.reward_func.train_op, feed_dict={input_ph: self.dataset[start:start+batch_size][0] , reward_ph: self.dataset[start:start+batch_size][1]})
+            else:
+                start = (start + batch_size)%train_size
+                self.reward_func.sess.run(self.reward_func.train_op, feed_dict={input_ph: self.dataset[start:start+batch_size][0] , reward_ph: self.dataset[start:start+batch_size][1]})
+
+        reward_sample_num = 32
+        reward_directions = []
+        for i in range(reward_sample_num):
+            idx, delta = self.deltas.get_delta(self.w_policy.size)
+            delta = (self.delta_std * delta).reshape(w_policy.shape)
+            params = (delta + self.w_policy).flatten()
+            reward_directions.append(params)
+
+        num_params_gradient = reward_sample_num / batch_size
+        for i in range(num_params_gradient):
+            params_gradient = self.reward_func.sess.run(self.reward_func.input_gradient_op, feed_dict={input_ph: reward_directions[i*batch_size:(i+1)*batch_size]})
+
         return
 
     def train(self, num_iter):
