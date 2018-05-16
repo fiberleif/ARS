@@ -30,6 +30,7 @@ class SharedNoiseTable(object):
     def sample_index(self, dim):
         return self.rg.randint(0, len(self.noise) - dim + 1)
 
+    # get noise sequence of dim length randomly.
     def get_delta(self, dim):
         idx = self.sample_index(dim)
         return idx, self.get(idx, dim)

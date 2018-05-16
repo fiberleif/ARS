@@ -173,13 +173,20 @@ class ARSLearner(object):
         self.logdir = logdir
         self.shift = shift
         self.params = params
+
+        # params->return tuple dataset
+        self.dataset = []
+
+        # exp statistics
         self.max_past_avg_reward = float('-inf')
         self.num_episodes_used = float('inf')
 
         
         # create shared table for storing noise
         print("Creating deltas table.")
+        # generate noise sequence of fixed size in object stores
         deltas_id = create_shared_noise.remote()
+
         self.deltas = SharedNoiseTable(ray.get(deltas_id), seed = seed + 3)
         print('Created deltas table.')
 
@@ -219,6 +226,7 @@ class ARSLearner(object):
         policy_id = ray.put(self.w_policy)
 
         t1 = time.time()
+        # int(5/2) = 2 向下取整
         num_rollouts = int(num_deltas / self.num_workers)
             
         # parallel generation of rollouts
@@ -261,6 +269,11 @@ class ARSLearner(object):
         if evaluate:
             return rollout_rewards
 
+        # append data into dataset
+        for row in deltas_idx.shape[0]:
+            for col in deltas_idx.shape[]
+            self.deltas.get(idx, self.w_policy.size)
+
         # select top performing directions if deltas_used < num_deltas
         max_rewards = np.max(rollout_rewards, axis = 1)
         if self.deltas_used > self.num_deltas:
@@ -269,7 +282,8 @@ class ARSLearner(object):
         idx = np.arange(max_rewards.size)[max_rewards >= np.percentile(max_rewards, 100*(1 - (self.deltas_used / self.num_deltas)))]
         deltas_idx = deltas_idx[idx]
         rollout_rewards = rollout_rewards[idx,:]
-        
+
+
         # normalize rewards by their standard deviation
         rollout_rewards /= np.std(rollout_rewards)
 
@@ -412,4 +426,5 @@ if __name__ == '__main__':
     args = parser.parse_args()
     params = vars(args)
     run_ars(params)
+    # run_ars(**vars(args)) 解析args_dict
 
