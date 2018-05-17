@@ -218,8 +218,8 @@ class ARSLearner(object):
         # params->return tuple dataset
         self.dataset_x = []
         self.dataset_y = []
-        self.reward_func = RewardFunction(params_dim= self.w_policy.size, hidden_dim= 50, batch_size= 32, lr= 1e-3, seed= self.seed)
         self.batch_size = self.num_deltas # set batch_size equal to num_directions
+        self.reward_func = RewardFunction(params_dim= self.w_policy.size, hidden_dim= 50, batch_size= self.batch_size, lr= 1e-3, seed= self.seed)
 
 
     def aggregate_rollouts(self, num_rollouts = None, evaluate = False):
@@ -302,7 +302,7 @@ class ARSLearner(object):
         # append data into train dataset
         for i in range(deltas_idx.size):
             delta = self.deltas.get(deltas_idx[i], self.w_policy.size)
-            delta = (self.delta_std * delta).reshape(w_policy.shape)
+            delta = (self.delta_std * delta).reshape(self.w_policy.shape)
 
             params_pos = (self.w_policy + delta).flatten()
             params_neg = (self.w_policy - delta).flatten()
@@ -357,22 +357,26 @@ class ARSLearner(object):
 
         reward_train_epochs = 100
         dataset_x_array = np.array(self.dataset_x)
-        dataset_y_array = np.array(self.dataset_y)
-        num_batch = train_size / self.batch_size
+        dataset_y_array = np.array(self.dataset_y).reshape(-1,1)
+        # print(dataset_x_array.shape)
+        # print(dataset_y_array.shape)
+
+        num_batch = int(train_size / self.batch_size)
 
         # train reward function
-        for i in range(reward_train_epochs)：
+        for i in range(reward_train_epochs):
             init_list = [i for i in range(train_size)]
             shuffle(init_list)
             shuffle_dataset_x = dataset_x_array[init_list]
             shuffle_dataset_y = dataset_y_array[init_list]
-            self.reward_func.sess.run(self.reward_func.train_op, feed_dict={input_ph: shuffle_dataset_x[0:self.batch_size], reward_ph: shuffle_dataset_y[0:self.batch_size]})
+            self.reward_func.sess.run(self.reward_func.train_op, feed_dict={self.reward_func.input_ph: shuffle_dataset_x[0:self.batch_size], 
+                                self.reward_func.reward_ph: shuffle_dataset_y[0:self.batch_size]})
 
         # output reward function loss
         loss_list = []
         for i in range(num_batch):
-            loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={input_ph: dataset_x_array[i*self.batch_size: (i+1)*self.batch_size], 
-                                                                    reward_ph: dataset_y_array[i*self.batch_size: (i+1)*self.batch_size]}))
+            loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[i*self.batch_size: (i+1)*self.batch_size], 
+                                self.reward_func.reward_ph: dataset_y_array[i*self.batch_size: (i+1)*self.batch_size]}))
         reward_avg_loss = np.mean(loss_list)
 
         # generate gradient from reward function
@@ -380,11 +384,13 @@ class ARSLearner(object):
         reward_directions = []
         for i in range(reward_sample_num):
             idx, delta = self.deltas.get_delta(self.w_policy.size)
-            delta = (self.delta_std * delta).reshape(w_policy.shape)
+            delta = (self.delta_std * delta).reshape(self.w_policy.shape)
             params = (delta + self.w_policy).flatten()
             reward_directions.append(params)
 
-        params_gradient, _ = self.reward_func.sess.run(self.reward_func.input_gradient_op, feed_dict={input_ph: reward_directions[0:self.batch_size]})
+        grad_var_list = self.reward_func.sess.run(self.reward_func.input_gradient_op, feed_dict={self.reward_func.input_ph: reward_directions[0:self.batch_size]})
+        params_gradient = grad_var_list[0][0]
+        # print(params_gradient.shape)
         gradient_mean = np.mean(params_gradient, axis=0)
 
         beta = 0.5
@@ -419,12 +425,12 @@ class ARSLearner(object):
                 test_size = len(test_dataset_x)
                 assert len(test_dataset_x) == len(test_dataset_y)
                 test_dataset_x = np.array(test_dataset_x)
-                test_dataset_y = np.array(test_dataset_y)
-                num_batch = test_size / self.batch_size
+                test_dataset_y = np.array(test_dataset_y).reshape(-1,1)
+                num_batch = int(test_size / self.batch_size)
 
                 for idx in range(num_batch):
-                    test_loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={input_ph: test_dataset_x[idx*self.batch_size: (idx+1)*self.batch_size], 
-                                                                    reward_ph: test_dataset_y[idx*self.batch_size: (idx+1)*self.batch_size]}))
+                    test_loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: test_dataset_x[idx*self.batch_size: (idx+1)*self.batch_size], 
+                                                                    self.reward_func.reward_ph: test_dataset_y[idx*self.batch_size: (idx+1)*self.batch_size]}))
                 test_avg_loss = np.mean(test_loss_list)
                 print(sorted(self.params.items()))
                 logz.log_tabular("Time", time.time() - start)
@@ -532,8 +538,9 @@ if __name__ == '__main__':
     # for ARS V1 use filter = 'NoFilter'
     parser.add_argument('--filter', type=str, default='MeanStdFilter')
 
-    local_ip = socket.gethostbyname(socket.gethostname())
-    ray.init(redis_address= local_ip + ':6379')
+    # local_ip = socket.gethostbyname(socket.gethostname())
+    # ray.init(redis_address= local_ip + ':6379')
+    ray.init()
     
     args = parser.parse_args()
     params = vars(args)
