@@ -219,7 +219,7 @@ class ARSLearner(object):
         self.dataset_x = []
         self.dataset_y = []
         self.batch_size = self.num_deltas # set batch_size equal to num_directions
-        self.reward_func = RewardFunction(params_dim= self.w_policy.size, hidden_dim= 50, batch_size= self.batch_size, lr= 1e-3, seed= self.seed)
+        self.reward_func = RewardFunction(params_dim= self.w_policy.size, hidden_dim= 50, batch_size= self.batch_size, lr= 1e-1, seed= self.seed)
 
 
     def aggregate_rollouts(self, num_rollouts = None, evaluate = False):
@@ -276,27 +276,32 @@ class ARSLearner(object):
 
         print('Time to generate rollouts:', t2 - t1)
 
+        # if evaluate:
+
+        #     # append data into test dataset
+        #     test_dataset_x = []
+        #     test_dataset_y = []
+        #     print(deltas_idx)
+        #     for i in range(deltas_idx.size):
+        #         delta = self.deltas.get(deltas_idx[i], self.w_policy.size)
+        #         print(delta.shape)
+        #         delta = (self.delta_std * delta).reshape(self.w_policy.shape)
+
+        #         params_pos = (self.w_policy + delta).flatten()
+        #         params_neg = (self.w_policy - delta).flatten()
+
+        #         reward_pos = rollout_rewards[i, 0]
+        #         reward_neg = rollout_rewards[i, 1]
+
+        #         test_dataset_x.append(params_pos)
+        #         test_dataset_y.append(reward_pos)
+        #         test_dataset_x.append(params_neg)
+        #         test_dataset_y.append(reward_neg)
+
+        #     return test_dataset_x, test_dataset_y, rollout_rewards
+
         if evaluate:
-
-            # append data into test dataset
-            test_dataset_x = []
-            test_dataset_y = []
-            for i in range(deltas_idx.size):
-                delta = self.deltas.get(deltas_idx[i], self.w_policy.size)
-                delta = (self.delta_std * delta).reshape(w_policy.shape)
-
-                params_pos = (self.w_policy + delta).flatten()
-                params_neg = (self.w_policy - delta).flatten()
-
-                reward_pos = rollout_rewards[i, 0]
-                reward_neg = rollout_rewards[i, 1]
-
-                test_dataset_x.append(params_pos)
-                test_dataset_y.append(reward_pos)
-                test_dataset_x.append(params_neg)
-                test_dataset_y.append(reward_neg)
-
-            return test_dataset_x, test_dataset_y, rollout_rewards
+            return rollout_rewards
 
 
         # append data into train dataset
@@ -353,15 +358,25 @@ class ARSLearner(object):
 
         # set train hyparameter for reward function learning 
         train_size = len(self.dataset_x)
+        print("train dataset size:", train_size)
         assert len(self.dataset_x) == len(self.dataset_y)
 
-        reward_train_epochs = 100
+        reward_train_epochs = 300
         dataset_x_array = np.array(self.dataset_x)
         dataset_y_array = np.array(self.dataset_y).reshape(-1,1)
         # print(dataset_x_array.shape)
         # print(dataset_y_array.shape)
 
         num_batch = int(train_size / self.batch_size)
+
+        # output reward loss before train
+        loss_list = []
+        for i in range(num_batch):
+            loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[i*self.batch_size: (i+1)*self.batch_size], 
+                                self.reward_func.reward_ph: dataset_y_array[i*self.batch_size: (i+1)*self.batch_size]}))
+        reward_avg_loss = np.mean(loss_list)
+        print("reward_avg_loss_before:", reward_avg_loss)
+
 
         # train reward function
         for i in range(reward_train_epochs):
@@ -378,6 +393,7 @@ class ARSLearner(object):
             loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[i*self.batch_size: (i+1)*self.batch_size], 
                                 self.reward_func.reward_ph: dataset_y_array[i*self.batch_size: (i+1)*self.batch_size]}))
         reward_avg_loss = np.mean(loss_list)
+        print("reward_avg_loss_after:", reward_avg_loss)
 
         # generate gradient from reward function
         reward_sample_num = self.batch_size
@@ -416,22 +432,22 @@ class ARSLearner(object):
             # record statistics every 10 iterations
             if ((i + 1) % 10 == 0):
                 
-                test_dataset_x, test_dataset_y, rewards = self.aggregate_rollouts(num_rollouts = 100, evaluate = True)
+                rewards = self.aggregate_rollouts(num_rollouts = 100, evaluate = True)
                 w = ray.get(self.workers[0].get_weights_plus_stats.remote())
                 np.savez(self.logdir + "/lin_policy_plus", w)
                 
-                # output reward function loss
-                test_loss_list = []
-                test_size = len(test_dataset_x)
-                assert len(test_dataset_x) == len(test_dataset_y)
-                test_dataset_x = np.array(test_dataset_x)
-                test_dataset_y = np.array(test_dataset_y).reshape(-1,1)
-                num_batch = int(test_size / self.batch_size)
+                # # output reward function loss
+                # test_loss_list = []
+                # test_size = len(test_dataset_x)
+                # assert len(test_dataset_x) == len(test_dataset_y)
+                # test_dataset_x = np.array(test_dataset_x)
+                # test_dataset_y = np.array(test_dataset_y).reshape(-1,1)
+                # num_batch = int(test_size / self.batch_size)
 
-                for idx in range(num_batch):
-                    test_loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: test_dataset_x[idx*self.batch_size: (idx+1)*self.batch_size], 
-                                                                    self.reward_func.reward_ph: test_dataset_y[idx*self.batch_size: (idx+1)*self.batch_size]}))
-                test_avg_loss = np.mean(test_loss_list)
+                # for idx in range(num_batch):
+                #     test_loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: test_dataset_x[idx*self.batch_size: (idx+1)*self.batch_size], 
+                #                                                     self.reward_func.reward_ph: test_dataset_y[idx*self.batch_size: (idx+1)*self.batch_size]}))
+                # test_avg_loss = np.mean(test_loss_list)
                 print(sorted(self.params.items()))
                 logz.log_tabular("Time", time.time() - start)
                 logz.log_tabular("Iteration", i + 1)
@@ -441,7 +457,7 @@ class ARSLearner(object):
                 logz.log_tabular("MinRewardRollout", np.min(rewards))
                 logz.log_tabular("timesteps", self.timesteps)
                 logz.log_tabular("AvgRewardFunctionLoss", reward_avg_loss)
-                logz.log_tabular("AvgRewardTestLoss", test_avg_loss)
+                # logz.log_tabular("AvgRewardTestLoss", test_avg_loss)
                 logz.dump_tabular()
                 
                 logger.log({"Time": time.time() - start,

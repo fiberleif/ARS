@@ -52,10 +52,10 @@ class RewardFunction(object):
          for each action dimension (i.e. variances not determined by NN).
         """
         with tf.variable_scope("reward_params") as scope:
-            out = tf.layers.dense(self.input_ph, self.hidden_dim, tf.tanh,
-                              kernel_initializer=tf.random_normal_initializer(
-                                  stddev=np.sqrt(1 / self.params_dim)), name="h1")
-            self.rewards = tf.layers.dense(out, 1,
+            # out = tf.layers.dense(self.input_ph, self.hidden_dim, tf.tanh,
+            #                   kernel_initializer=tf.random_normal_initializer(
+            #                       stddev=np.sqrt(1 / self.params_dim)), name="h1")
+            self.rewards = tf.layers.dense(self.input_ph, 1,
                                      kernel_initializer=tf.random_normal_initializer(
                                          stddev=np.sqrt(1 / self.hidden_dim)), name="rewards")
         self.rewards_sum = tf.reduce_sum(self.rewards)
