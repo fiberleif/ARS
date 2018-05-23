@@ -132,6 +132,7 @@ class Worker(object):
         return
 
     def get_weights(self):
+
         return self.policy.get_weights()
     
     def get_filter(self):
@@ -218,8 +219,8 @@ class ARSLearner(object):
         # params->return tuple dataset
         self.dataset_x = []
         self.dataset_y = []
-        self.batch_size = self.num_deltas # set batch_size equal to num_directions
-        self.reward_func = RewardFunction(params_dim= self.w_policy.size, hidden_dim= 50, batch_size= self.batch_size, lr= 1e-1, seed= self.seed)
+        self.batch_size = 2*self.num_deltas # set batch_size equal to num_directions
+        self.reward_func = RewardFunction(params_dim= self.w_policy.size, hidden_dim= 50, batch_size= self.batch_size, lr= 1e-3, seed= self.seed)
 
 
     def aggregate_rollouts(self, num_rollouts = None, evaluate = False):
@@ -275,30 +276,6 @@ class ARSLearner(object):
         t2 = time.time()
 
         print('Time to generate rollouts:', t2 - t1)
-
-        # if evaluate:
-
-        #     # append data into test dataset
-        #     test_dataset_x = []
-        #     test_dataset_y = []
-        #     print(deltas_idx)
-        #     for i in range(deltas_idx.size):
-        #         delta = self.deltas.get(deltas_idx[i], self.w_policy.size)
-        #         print(delta.shape)
-        #         delta = (self.delta_std * delta).reshape(self.w_policy.shape)
-
-        #         params_pos = (self.w_policy + delta).flatten()
-        #         params_neg = (self.w_policy - delta).flatten()
-
-        #         reward_pos = rollout_rewards[i, 0]
-        #         reward_neg = rollout_rewards[i, 1]
-
-        #         test_dataset_x.append(params_pos)
-        #         test_dataset_y.append(reward_pos)
-        #         test_dataset_x.append(params_neg)
-        #         test_dataset_y.append(reward_neg)
-
-        #     return test_dataset_x, test_dataset_y, rollout_rewards
 
         if evaluate:
             return rollout_rewards
@@ -361,7 +338,7 @@ class ARSLearner(object):
         print("train dataset size:", train_size)
         assert len(self.dataset_x) == len(self.dataset_y)
 
-        reward_train_epochs = 300
+        reward_train_epochs = 10000
         dataset_x_array = np.array(self.dataset_x)
         dataset_y_array = np.array(self.dataset_y).reshape(-1,1)
         # print(dataset_x_array.shape)
@@ -374,18 +351,19 @@ class ARSLearner(object):
         for i in range(num_batch):
             loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[i*self.batch_size: (i+1)*self.batch_size], 
                                 self.reward_func.reward_ph: dataset_y_array[i*self.batch_size: (i+1)*self.batch_size]}))
+        # print(loss_list)
         reward_avg_loss = np.mean(loss_list)
         print("reward_avg_loss_before:", reward_avg_loss)
 
-
+        batch_size = min(256, train_size)
         # train reward function
         for i in range(reward_train_epochs):
             init_list = [i for i in range(train_size)]
             shuffle(init_list)
             shuffle_dataset_x = dataset_x_array[init_list]
             shuffle_dataset_y = dataset_y_array[init_list]
-            self.reward_func.sess.run(self.reward_func.train_op, feed_dict={self.reward_func.input_ph: shuffle_dataset_x[0:self.batch_size], 
-                                self.reward_func.reward_ph: shuffle_dataset_y[0:self.batch_size]})
+            self.reward_func.sess.run(self.reward_func.train_op, feed_dict={self.reward_func.input_ph: shuffle_dataset_x[0:batch_size], 
+                                self.reward_func.reward_ph: shuffle_dataset_y[0:batch_size]})
 
         # output reward function loss
         loss_list = []
@@ -404,12 +382,14 @@ class ARSLearner(object):
             params = (delta + self.w_policy).flatten()
             reward_directions.append(params)
 
-        grad_var_list = self.reward_func.sess.run(self.reward_func.input_gradient_op, feed_dict={self.reward_func.input_ph: reward_directions[0:self.batch_size]})
-        params_gradient = grad_var_list[0][0]
-        # print(params_gradient.shape)
-        gradient_mean = np.mean(params_gradient, axis=0)
+        params_gradient = self.reward_func.sess.run(self.reward_func.grad_x, feed_dict={self.reward_func.input_ph: reward_directions[0:self.batch_size]})
+        # params_gradient = grad_var_list[0][0]
+        params_gradient = np.asarray(params_gradient)
+        print(params_gradient.shape)
+        gradient_mean = np.mean(params_gradient, axis=(0,1))
+        print(gradient_mean.shape)
 
-        beta = 0.5
+        beta = 0.2
         self.w_policy -= beta * self.optimizer._compute_step(gradient_mean).reshape(self.w_policy.shape)
         self.w_policy -= (1 - beta) * self.optimizer._compute_step(g_hat).reshape(self.w_policy.shape)
 
@@ -490,6 +470,8 @@ class ARSLearner(object):
             t2 = time.time()
             print('Time to sync statistics:', t2 - t1)
         
+        np.savetxt("dataset_x.txt", self.dataset_x)
+        np.savetxt("dataset_y.txt", self.dataset_y)
         logger.close()    
         return 
 

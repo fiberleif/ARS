@@ -4,7 +4,7 @@
 "env_name"	:	"HalfCheetah-v1",
 "filter"	:	"MeanStdFilter",
 "n_directions"	:	8,
-"n_iter"	:	20,
+"n_iter"	:	200,
 "n_workers"	:	8,
 "policy_type"	:	"linear",
 "rollout_length"	:	1000,

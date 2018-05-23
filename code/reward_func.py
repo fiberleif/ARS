@@ -40,8 +40,10 @@ class RewardFunction(object):
     def _placeholders(self):
         """ Input placeholders"""
         # observations, actions and advantages:
-        self.input_ph = tf.Variable(np.zeros([self.batch_size, self.params_dim]))
-        self.reward_ph = tf.Variable(np.zeros([self.batch_size, 1]))
+        # self.input_var = tf.Variable(np.zeros([self.batch_size, self.params_dim]))
+        # self.reward_var = tf.Variable(np.zeros([self.batch_size, 1]))
+        self.input_ph = tf.placeholder(tf.float32, (None, self.params_dim), 'params')
+        self.reward_ph = tf.placeholder(tf.float32, (None, 1), 'rewards')
         # self.lr_ph = tf.placeholder(tf.float32, (), 'eta')
 
     def _policy_nn(self):
@@ -52,14 +54,19 @@ class RewardFunction(object):
          for each action dimension (i.e. variances not determined by NN).
         """
         with tf.variable_scope("reward_params") as scope:
-            # out = tf.layers.dense(self.input_ph, self.hidden_dim, tf.tanh,
-            #                   kernel_initializer=tf.random_normal_initializer(
-            #                       stddev=np.sqrt(1 / self.params_dim)), name="h1")
-            self.rewards = tf.layers.dense(self.input_ph, 1,
+        
+            self.h1 = tf.layers.dense(self.input_ph, self.hidden_dim, tf.nn.tanh,
+                              kernel_initializer=tf.random_normal_initializer(
+                                  stddev=np.sqrt(1 / self.params_dim)), name="h1")
+            self.h2 = tf.layers.dense(self.h1, self.hidden_dim, tf.nn.tanh,
+                              kernel_initializer=tf.random_normal_initializer(
+                                  stddev=np.sqrt(1 / self.params_dim)), name="h2")
+            self.rewards = tf.layers.dense(self.h2, 1,
                                      kernel_initializer=tf.random_normal_initializer(
                                          stddev=np.sqrt(1 / self.hidden_dim)), name="rewards")
-        self.rewards_sum = tf.reduce_sum(self.rewards)
+            self.rewards_sum = tf.reduce_sum(self.rewards)
 
+        
 
 
     def _loss_train_op(self):
@@ -73,12 +80,13 @@ class RewardFunction(object):
         """
 
         self.reward_params = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope="reward_params")
-        # print(self.reward_params)
+        print(self.reward_params)
+        # self.ph_loss = tf.reduce_mean(tf.pow(self.ph_rewards - self.reward_ph, 2))
         self.loss = tf.reduce_mean(tf.pow(self.rewards - self.reward_ph, 2))
-        optimizer = tf.train.AdamOptimizer(self.lr)
-        self.train_op = optimizer.minimize(self.loss, var_list=self.reward_params)
-        optimizer_input = tf.train.GradientDescentOptimizer(self.lr)
-        self.input_gradient_op = optimizer_input.compute_gradients(self.rewards_sum, var_list=[self.input_ph])
+
+        self.optimizer = tf.train.AdamOptimizer(self.lr)
+        self.train_op = self.optimizer.minimize(self.loss, var_list=self.reward_params)
+        self.grad_x = tf.gradients(self.rewards, self.input_ph)
 
     def _init_session(self):
         """Launch TensorFlow session and initialize variables"""
