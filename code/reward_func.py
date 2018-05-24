@@ -9,7 +9,7 @@ import tensorflow as tf
 class RewardFunction(object):
     """ NN-based reward function approximation """
     # def __init__(self, obs_dim, act_dim, kl_targ, hid1_mult, policy_logvar, seed, seed_op, clipping_range=None):
-    def __init__(self, params_dim, hidden_dim, batch_size, lr, seed):
+    def __init__(self, params_dim, hidden_dim, lr, seed):
 
         """
         Args:
@@ -23,7 +23,7 @@ class RewardFunction(object):
         # self.lr_multiplier = 1.0  # dynamically adjust lr when D_KL out of control
         self.params_dim = params_dim
         self.hidden_dim = hidden_dim
-        self.batch_size = batch_size
+        # self.batch_size = batch_size
         self._build_graph(seed)
         self._init_session()
 

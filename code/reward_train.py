@@ -16,7 +16,7 @@ dataset_y = np.loadtxt("dataset_y.txt")
 
 dataset_y = dataset_y.reshape(-1,1)
 
-reward_func = RewardFunction(params_dim= w_policy_size, hidden_dim= hidden_dim, batch_size= batch_size, lr= lr, seed= seed)
+reward_func = RewardFunction(params_dim= w_policy_size, hidden_dim= hidden_dim, lr= lr, seed= seed)
 
 train_size = dataset_x.shape[0]
 # print(train_size)

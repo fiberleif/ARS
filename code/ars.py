@@ -220,7 +220,7 @@ class ARSLearner(object):
         self.dataset_x = []
         self.dataset_y = []
         self.batch_size = 2*self.num_deltas # set batch_size equal to num_directions
-        self.reward_func = RewardFunction(params_dim= self.w_policy.size, hidden_dim= 50, batch_size= self.batch_size, lr= 1e-3, seed= self.seed)
+        self.reward_func = RewardFunction(params_dim= self.w_policy.size, hidden_dim= 100, lr= 1e-2, seed= self.seed)
 
 
     def aggregate_rollouts(self, num_rollouts = None, evaluate = False):
@@ -335,62 +335,75 @@ class ARSLearner(object):
 
         # set train hyparameter for reward function learning 
         train_size = len(self.dataset_x)
+        reward_avg_loss = 0.0
         print("train dataset size:", train_size)
         assert len(self.dataset_x) == len(self.dataset_y)
 
-        reward_train_epochs = 10000
-        dataset_x_array = np.array(self.dataset_x)
-        dataset_y_array = np.array(self.dataset_y).reshape(-1,1)
-        # print(dataset_x_array.shape)
-        # print(dataset_y_array.shape)
+        if(train_size > 20):
+            reward_train_epochs = 10000
+            dataset_x_array = np.array(self.dataset_x)
+            dataset_y_array = np.array(self.dataset_y).reshape(-1,1)
+            # print(dataset_x_array.shape)
+            # print(dataset_y_array.shape)
 
-        num_batch = int(train_size / self.batch_size)
+            self.batch_size = train_size
+            num_batch = int(train_size / self.batch_size)
 
-        # output reward loss before train
-        loss_list = []
-        for i in range(num_batch):
-            loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[i*self.batch_size: (i+1)*self.batch_size], 
-                                self.reward_func.reward_ph: dataset_y_array[i*self.batch_size: (i+1)*self.batch_size]}))
-        # print(loss_list)
-        reward_avg_loss = np.mean(loss_list)
-        print("reward_avg_loss_before:", reward_avg_loss)
+            # output reward loss before train
+            loss_list = []
+            for i in range(num_batch):
+                loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[i*self.batch_size: (i+1)*self.batch_size], 
+                                    self.reward_func.reward_ph: dataset_y_array[i*self.batch_size: (i+1)*self.batch_size]}))
+            # print(loss_list)
+            reward_avg_loss = np.mean(loss_list)
+            print("reward_avg_loss_before:", reward_avg_loss)
 
-        batch_size = min(256, train_size)
-        # train reward function
-        for i in range(reward_train_epochs):
-            init_list = [i for i in range(train_size)]
-            shuffle(init_list)
-            shuffle_dataset_x = dataset_x_array[init_list]
-            shuffle_dataset_y = dataset_y_array[init_list]
-            self.reward_func.sess.run(self.reward_func.train_op, feed_dict={self.reward_func.input_ph: shuffle_dataset_x[0:batch_size], 
-                                self.reward_func.reward_ph: shuffle_dataset_y[0:batch_size]})
+            # batch_size = min(256, train_size)
+            batch_size = train_size
+            # train reward function
+            for i in range(reward_train_epochs):
+                # init_list = [i for i in range(train_size)]
+                # shuffle(init_list)
+                # shuffle_dataset_x = dataset_x_array[init_list]
+                # shuffle_dataset_y = dataset_y_array[init_list]
+                # self.reward_func.sess.run(self.reward_func.train_op, feed_dict={self.reward_func.input_ph: shuffle_dataset_x[0:batch_size], 
+                #                     self.reward_func.reward_ph: shuffle_dataset_y[0:batch_size]})
+                self.reward_func.sess.run(self.reward_func.train_op, feed_dict={self.reward_func.input_ph: dataset_x_array[0:batch_size], 
+                                    self.reward_func.reward_ph: dataset_y_array[0:batch_size]})
+                if(i%2000 == 0) and (i != 0):
+                    loss_list = []
+                    for j in range(num_batch):
+                        loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[j*batch_size: (j+1)*batch_size], 
+                                            self.reward_func.reward_ph: dataset_y_array[j*batch_size: (j+1)*batch_size]}))
+                    reward_avg_loss = np.mean(loss_list)
+                    print("epoch {0}: reward_avg_loss:{1}".format(i, reward_avg_loss))
 
-        # output reward function loss
-        loss_list = []
-        for i in range(num_batch):
-            loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[i*self.batch_size: (i+1)*self.batch_size], 
-                                self.reward_func.reward_ph: dataset_y_array[i*self.batch_size: (i+1)*self.batch_size]}))
-        reward_avg_loss = np.mean(loss_list)
-        print("reward_avg_loss_after:", reward_avg_loss)
+            # output reward function loss
+            loss_list = []
+            for i in range(num_batch):
+                loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[i*self.batch_size: (i+1)*self.batch_size], 
+                                    self.reward_func.reward_ph: dataset_y_array[i*self.batch_size: (i+1)*self.batch_size]}))
+            reward_avg_loss = np.mean(loss_list)
+            print("reward_avg_loss_after:", reward_avg_loss)
 
-        # generate gradient from reward function
-        reward_sample_num = self.batch_size
-        reward_directions = []
-        for i in range(reward_sample_num):
-            idx, delta = self.deltas.get_delta(self.w_policy.size)
-            delta = (self.delta_std * delta).reshape(self.w_policy.shape)
-            params = (delta + self.w_policy).flatten()
-            reward_directions.append(params)
+            # generate gradient from reward function
+            reward_sample_num = self.batch_size
+            reward_directions = []
+            for i in range(reward_sample_num):
+                idx, delta = self.deltas.get_delta(self.w_policy.size)
+                delta = (self.delta_std * delta).reshape(self.w_policy.shape)
+                params = (delta + self.w_policy).flatten()
+                reward_directions.append(params)
 
-        params_gradient = self.reward_func.sess.run(self.reward_func.grad_x, feed_dict={self.reward_func.input_ph: reward_directions[0:self.batch_size]})
-        # params_gradient = grad_var_list[0][0]
-        params_gradient = np.asarray(params_gradient)
-        print(params_gradient.shape)
-        gradient_mean = np.mean(params_gradient, axis=(0,1))
-        print(gradient_mean.shape)
+            params_gradient = self.reward_func.sess.run(self.reward_func.grad_x, feed_dict={self.reward_func.input_ph: reward_directions[0:self.batch_size]})
+            # params_gradient = grad_var_list[0][0]
+            params_gradient = np.asarray(params_gradient)
+            # print(params_gradient.shape)
+            gradient_mean = np.mean(params_gradient, axis=(0,1))
+            # print(gradient_mean.shape)
 
-        beta = 0.2
-        self.w_policy -= beta * self.optimizer._compute_step(gradient_mean).reshape(self.w_policy.shape)
+        beta = 0.0
+        # self.w_policy -= beta * self.optimizer._compute_step(gradient_mean).reshape(self.w_policy.shape)
         self.w_policy -= (1 - beta) * self.optimizer._compute_step(g_hat).reshape(self.w_policy.shape)
 
         return reward_avg_loss
