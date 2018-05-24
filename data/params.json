@@ -8,6 +8,6 @@
 "n_workers"	:	2,
 "policy_type"	:	"linear",
 "rollout_length"	:	1000,
-"seed"	:	1,
+"seed"	:	5,
 "shift"	:	0,
 "step_size"	:	0.02}

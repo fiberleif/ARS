@@ -330,12 +330,13 @@ class ARSLearner(object):
         """
         
         g_hat = self.aggregate_rollouts()                    
-        print("Euclidean norm of update step:", np.linalg.norm(g_hat))
         # self.w_policy -= self.optimizer._compute_step(g_hat).reshape(self.w_policy.shape)
 
         # set train hyparameter for reward function learning 
         train_size = len(self.dataset_x)
         reward_avg_loss = 0.0
+        gradient_mean = np.zeros(self.w_policy.shape)
+
         print("train dataset size:", train_size)
         assert len(self.dataset_x) == len(self.dataset_y)
 
@@ -370,7 +371,7 @@ class ARSLearner(object):
                 #                     self.reward_func.reward_ph: shuffle_dataset_y[0:batch_size]})
                 self.reward_func.sess.run(self.reward_func.train_op, feed_dict={self.reward_func.input_ph: dataset_x_array[0:batch_size], 
                                     self.reward_func.reward_ph: dataset_y_array[0:batch_size]})
-                if(i%2000 == 0) and (i != 0):
+                if(i%3000 == 0) and (i != 0):
                     loss_list = []
                     for j in range(num_batch):
                         loss_list.append(self.reward_func.sess.run(self.reward_func.loss, feed_dict={self.reward_func.input_ph: dataset_x_array[j*batch_size: (j+1)*batch_size], 
@@ -402,8 +403,14 @@ class ARSLearner(object):
             gradient_mean = np.mean(params_gradient, axis=(0,1))
             # print(gradient_mean.shape)
 
-        beta = 0.0
-        # self.w_policy -= beta * self.optimizer._compute_step(gradient_mean).reshape(self.w_policy.shape)
+        beta = 0.5
+        func_lr_mul = 1e-2
+        gradient_mean = gradient_mean * func_lr_mul
+        print("Euclidean norm of ES update:", np.linalg.norm(g_hat))
+        print("Euclidean norm of function gradient:", np.linalg.norm(gradient_mean)) 
+        # step = -self.stepsize * globalg
+        # self.w_policy += beta * func_lr * gradient_mean.reshape(self.w_policy.shape)
+        self.w_policy -= beta * self.optimizer._compute_step(gradient_mean).reshape(self.w_policy.shape)
         self.w_policy -= (1 - beta) * self.optimizer._compute_step(g_hat).reshape(self.w_policy.shape)
 
         return reward_avg_loss
